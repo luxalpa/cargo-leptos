@@ -10,6 +10,9 @@ use std::fs;
 ///Adds hashes to the filenames of the css, js, and wasm files in the output
 pub fn add_hashes_to_site(proj: &Project) -> Result<()> {
     let files_to_hashes = compute_front_file_hashes(proj).dot()?;
+
+    log::debug!("Hash computed: {files_to_hashes:?}");
+
     let renamed_files = rename_files(&files_to_hashes).dot()?;
 
     replace_in_file(
@@ -17,6 +20,14 @@ pub fn add_hashes_to_site(proj: &Project) -> Result<()> {
         &renamed_files,
         &proj.site.root_relative_pkg_dir(),
     );
+
+    fs::create_dir_all(
+        proj.hash_file
+            .abs
+            .parent()
+            .with_context(|| format!("no parent dir for {}", proj.hash_file.abs))?,
+    )
+    .with_context(|| format!("Failed to create parent dir for {}", proj.hash_file.abs))?;
 
     fs::write(
         &proj.hash_file.abs,
@@ -41,7 +52,10 @@ pub fn add_hashes_to_site(proj: &Project) -> Result<()> {
                 .ok_or(anyhow::anyhow!("no extension"))?,
             files_to_hashes[&proj.style.site_file.dest]
         ),
-    )?;
+    )
+    .with_context(|| format!("Failed to write hash file to {}", proj.hash_file.abs))?;
+
+    log::debug!("Hash written to {}", proj.hash_file.abs);
 
     Ok(())
 }
@@ -52,23 +66,46 @@ fn compute_front_file_hashes(proj: &Project) -> Result<HashMap<Utf8PathBuf, Stri
     let mut stack = vec![proj.site.root_relative_pkg_dir().into_std_path_buf()];
 
     while let Some(path) = stack.pop() {
-        if let Ok(entries) = std::fs::read_dir(path) {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    let path = entry.path();
+        if let Ok(entries) = fs::read_dir(path) {
+            for entry in entries.flatten() {
+                let path = entry.path();
 
-                    if path.is_file() {
-                        let hash = Base64UrlUnpadded::encode_string(
-                            &Md5::new().chain_update(fs::read(&path)?).finalize(),
-                        );
-
-                        files_to_hashes.insert(
-                            Utf8PathBuf::from_path_buf(path).expect("invalid path"),
-                            hash,
-                        );
-                    } else if path.is_dir() {
-                        stack.push(path);
+                if path.is_file() {
+                    if let Some(extension) = path.extension() {
+                        if extension == "css" && path != proj.style.site_file.dest {
+                            continue;
+                        }
                     }
+
+                    // Check if the path contains snippets and also if it
+                    // contains inline{}.js. We do not want to hash these files
+                    // as the webassembly will look for an unhashed version of
+                    // the .js file. The folder though can be hashed.
+                    if let Some(path_str) = path.to_str() {
+                        if path_str.contains("snippets") {
+                            if let Some(file_name) = path.file_name() {
+                                let file_name_str = file_name.to_string_lossy();
+                                if file_name_str.contains("inline") {
+                                    if let Some(extension) = path.extension() {
+                                        if extension == "js" {
+                                            continue;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let hash = Base64UrlUnpadded::encode_string(
+                        &Md5::new().chain_update(fs::read(&path)?).finalize(),
+                    );
+
+                    files_to_hashes.insert(
+                        Utf8PathBuf::from_path_buf(path).expect("invalid path"),
+                        hash,
+                    );
+                } else if path.is_dir() {
+                    stack.push(path);
                 }
             }
         }
@@ -92,7 +129,8 @@ fn rename_files(
             path.extension().ok_or(anyhow::anyhow!("no extension"))?,
         ));
 
-        fs::rename(path, &new_path)?;
+        fs::rename(path, &new_path)
+            .with_context(|| format!("Failed to rename {path} to {new_path}"))?;
 
         old_to_new_paths.insert(path.clone(), new_path);
     }
@@ -105,7 +143,8 @@ fn replace_in_file(
     old_to_new_paths: &HashMap<Utf8PathBuf, Utf8PathBuf>,
     root_dir: &Utf8PathBuf,
 ) {
-    let mut contents = fs::read_to_string(path).expect("could not read file");
+    let mut contents = fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("error {e}: could not read file {}", path));
 
     for (old_path, new_path) in old_to_new_paths {
         let old_path = old_path

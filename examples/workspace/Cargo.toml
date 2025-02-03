@@ -15,7 +15,7 @@ leptos_router = { version = "0.6", default-features = false }
 leptos_dom = { version = "0.6", default-features = false }
 leptos_actix = { version = "0.6" }
 
-gloo-net = { version = "0.4", features = ["http"] }
+gloo-net = { version = "0.6", features = ["http"] }
 
 # See https://github.com/leptos-rs/cargo-leptos for documentation of all the parameters.
 
@@ -28,3 +28,6 @@ lib-package = "front-package"
 assets-dir = "project1/assets"
 style-file = "project1/css/main.scss"
 site-root = "target/site/project1"
+server-fn-prefix = "/custom/prefix"
+disable-server-fn-hash = true
+server-fn-mod-path = true

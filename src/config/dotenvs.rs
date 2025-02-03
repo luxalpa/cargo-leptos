@@ -49,10 +49,14 @@ fn overlay(conf: &mut ProjectConfig, envs: impl Iterator<Item = (String, String)
             "LEPTOS_HASH_FILES" => conf.hash_files = val.parse()?,
             "LEPTOS_HASH_FILE_NAME" => conf.hash_file_name = Some(val.parse()?),
             "LEPTOS_BROWSERQUERY" => conf.browserquery = val,
+            "LEPTOS_BIN_EXE_NAME" => conf.bin_exe_name = Some(val),
+            "LEPTOS_BIN_TARGET" => conf.bin_target = val,
             "LEPTOS_BIN_TARGET_TRIPLE" => conf.bin_target_triple = Some(val),
             "LEPTOS_BIN_TARGET_DIR" => conf.bin_target_dir = Some(val),
             "LEPTOS_BIN_CARGO_COMMAND" => conf.bin_cargo_command = Some(val),
             "LEPTOS_JS_MINIFY" => conf.js_minify = val.parse()?,
+            "SERVER_FN_PREFIX" => conf.server_fn_prefix = Some(val),
+            "DISABLE_SERVER_FN_HASH" => conf.disable_server_fn_hash = true,
             // put these here to suppress the warning, but there's no
             // good way at the moment to pull the ProjectConfig all the way to Exe
             exe::ENV_VAR_LEPTOS_TAILWIND_VERSION => {}
